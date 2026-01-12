@@ -145,13 +145,25 @@ def _get_interrupt_enum(interrupts: list[DeviceInterrupt]) -> str:
     '''Return a string containing a C enumerations for the device interrupts.
     '''
     enum_str: str = 'typedef enum IRQn\n{\n'
+    highest_irq: int = 0
 
     for interrupt in interrupts:
-        name = interrupt.name + '_IRQn'
-        index = interrupt.index
-        caption = interrupt.caption
-        enum_str += f'    {name:<24} = {index :>3}, /* {caption} */\n'
+        # On some devices, multiple sources share a line. Handle that by outputting enum values for
+        # all of them if this happens.
+        sources: list[str] = interrupt.module_instance.split()
+        if len(sources) <= 1:
+            sources = [interrupt.name]
 
+        for source in sources:
+            name = source + '_IRQn'
+            index = interrupt.index
+            caption = interrupt.caption
+            enum_str += f'    {name:<24} = {index :>3}, /* {caption} */\n'
+        
+        if interrupt.index > highest_irq:
+            highest_irq = interrupt.index
+
+    enum_str += f'\n    PERIPH_MAX_IRQn = {highest_irq}\n'
     enum_str += '} IRQn_Type;\n'
 
     return ('#ifndef __ASSEMBLER__\n' +
@@ -175,7 +187,13 @@ def _get_core_config_macros(devinfo: DeviceInfo) -> str:
             has_num_irq = True
 
     if not has_num_irq:
-        macros += f'#define {'NUM_IRQ':<32} ({len(devinfo.interrupts)})\n\n'
+        highest_irq: int = 0
+
+        for interrupt in devinfo.interrupts:
+            if interrupt.index > highest_irq:
+                highest_irq = interrupt.index
+
+        macros += f'#define {'NUM_IRQ':<32} ({highest_irq+1})\n\n'
 
     # All Cortex-A devices have FPUs, but not all define this macro.
     if not has_fpu_present  and  devinfo.cpu.startswith('cortex-a'):

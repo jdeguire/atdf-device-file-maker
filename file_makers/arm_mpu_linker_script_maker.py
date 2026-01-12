@@ -283,11 +283,11 @@ def _get_MEMORY_regions(address_spaces: list[DeviceAddressSpace],
             # We need to add some region attributes to the main flash and RAM sections. Unfortunately,
             # the device info we can get from the ATDF files is not totally helpful here.
             if name == main_ddr_region.name.lower():
-                memory_cmd += f'    {name:<28} (lwx!r) : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+                memory_cmd += f'    {name:<28} (wx!r) : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
             elif name == main_sram_region.name.lower():
-                memory_cmd += f'    {name:<28} (wx!r)  : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+                memory_cmd += f'    {name:<28} (wx!r) : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
             else:
-                memory_cmd += f'    {name:<36} : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+                memory_cmd += f'    {name:<35} : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
 
     return memory_cmd
 
@@ -344,13 +344,13 @@ def _get_standard_program_SECTIONS(main_ddr_region: DeviceMemoryRegion,
         .vectors :
         {{
             KEEP(*(.vectors*))
-            . = ALIGN(4);
+            . = ALIGN(8);
         }} > {sram_name} AT > {ddr_name}
     
         PROVIDE(__sfixed = LOADADDR(.vectors));
         PROVIDE(__vectors_source = LOADADDR(.vectors));
         PROVIDE(__svectors = ADDR(.vectors));
-        PROVIDE(__evectors = ADDR(.vectors) + SIZEOF(.vectors);
+        PROVIDE(__evectors = ADDR(.vectors) + SIZEOF(.vectors));
 
         .text :
         {{
@@ -479,7 +479,6 @@ def _get_standard_data_SECTIONS(main_ddr_region: DeviceMemoryRegion) -> str:
 
         PROVIDE(__edata = __data_end );
         PROVIDE(__data_size = __data_end - __data_start );
-        PROVIDE(__data_source_size = __data_source_end - __data_source );
 
         .tbss (NOLOAD) :
         {{
@@ -496,7 +495,6 @@ def _get_standard_data_SECTIONS(main_ddr_region: DeviceMemoryRegion) -> str:
         PROVIDE(__tls_size = __tls_end - __tls_base );
         PROVIDE(__tls_align = MAX(ALIGNOF(.tdata), ALIGNOF(.tbss)) );
         PROVIDE(__arm32_tls_tcb_offset = MAX(8, __tls_align) );
-        PROVIDE(__arm64_tls_tcb_offset = MAX(16, __tls_align) );
 
         PROVIDE(__efixed = __bss_start);
         PROVIDE(__fixed_size = __efixed - __sfixed);

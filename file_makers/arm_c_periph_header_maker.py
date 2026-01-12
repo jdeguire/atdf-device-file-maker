@@ -150,9 +150,12 @@ def _get_register_macros(periph_name: str, reg: RegisterGroupMember) -> str:
     # A macro giving the offset. If this is an array of registers, create another macro to let you
     # get the offset into the array.
     reg_macros += _get_basic_macro(f'{macro_base_name}_OFFSET', f'0x{reg.offset:02X}ul')
+    reg_macros += _get_basic_macro(f'{macro_base_name}_OFST', f'0x{reg.offset:02X}ul')
     if reg.count:
         reg_macros += _get_basic_macro(f'{macro_base_name}_OFFSETn(off)',
                                    f'{macro_base_name}_OFFSET + ({reg.size}ul * off)')
+        reg_macros += _get_basic_macro(f'{macro_base_name}_OFSTn(off)',
+                                   f'{macro_base_name}_OFST + ({reg.size}ul * off)')
 
     # Get the 'Field_Msk', 'Field_Pos', and 'Field(v)' macros that every field has. Fields that
     # apply only in certain register modes will need a set for each mode.
@@ -162,22 +165,36 @@ def _get_register_macros(periph_name: str, reg: RegisterGroupMember) -> str:
     for field in reg.fields:
         if field.modes:
             for fmode in field.modes:
-                field_macro_name = f'{macro_base_name}_{fmode}_{field.name}'
+                if fmode.startswith('DEFAULT'):
+                    macro_mode = ''
+                elif fmode.endswith('MODE'):
+                    macro_mode = fmode[:-5]
+                else:
+                    macro_mode = fmode
+
+                if macro_mode:
+                    field_macro_name = f'{macro_base_name}_{macro_mode}_{field.name}'
+                else:
+                    field_macro_name = f'{macro_base_name}_{field.name}'
+
                 field_macros += _get_bitfield_macros(field_macro_name, field.mask, field.caption)
                 reg_mask |= field.mask
+
+                if field.values:
+                    field_macros += _get_bitfield_value_macros(macro_base_name, field.name, macro_mode, field.values)
         else:
             field_macro_name = f'{macro_base_name}_{field.name}'
             field_macros += _get_bitfield_macros(field_macro_name, field.mask, field.caption)
             reg_mask |= field.mask
 
-        if field.values:
-            value_macro_base = f'{macro_base_name}_{field.name}'
-            field_macros += _get_bitfield_value_macros(value_macro_base, field.values)
+            if field.values:
+                field_macros += _get_bitfield_value_macros(macro_base_name, field.name, '', field.values)
 
 
     # A macro giving a mask of used bits for the whole register. This is made up of the masks of
     # all of the fields.
     reg_macros += _get_basic_macro(f'{macro_base_name}_MASK' , f'0x{reg_mask:08X}ul')
+    reg_macros += _get_basic_macro(f'{macro_base_name}_Msk' , f'0x{reg_mask:08X}ul')
     reg_macros += '\n'
 
     return reg_macros + field_macros
@@ -269,7 +286,10 @@ def _get_bitfield_macros(field_macro_name: str, mask: int, caption: str) -> str:
     return macros
 
 
-def _get_bitfield_value_macros(macro_base_name: str, values: list[ParameterValue]) -> str:
+def _get_bitfield_value_macros(macro_base_name: str,
+                               field_name: str,
+                               field_mode: str,
+                               values: list[ParameterValue]) -> str:
     '''Return a string containing macros for each value in the given list: one macro defining the
     value and another convenience macro to assign this value to a register.
     '''
@@ -277,14 +297,19 @@ def _get_bitfield_value_macros(macro_base_name: str, values: list[ParameterValue
 
     for val in values:
         valname = val.name.strip('_')
-        macros += _get_basic_macro(f'    {macro_base_name}_{valname}_Val',
+        macros += _get_basic_macro(f'    {macro_base_name}_{field_name}_{valname}_Val',
                                    val.value + 'ul',
                                    val.caption)
 
     for val in values:
+        if field_mode:
+            shift_macro = f'{macro_base_name}_{field_mode}_{field_name}_Pos'
+        else:
+            shift_macro = f'{macro_base_name}_{field_name}_Pos'
+
         valname = val.name.strip('_')
-        macros += _get_basic_macro(f'{macro_base_name}_{valname}',
-                                   f'{macro_base_name}_{valname}_Val << {macro_base_name}_Pos')
+        macros += _get_basic_macro(f'{macro_base_name}_{field_name}_{valname}',
+                                   f'{macro_base_name}_{field_name}_{valname}_Val << {shift_macro}')
 
     return macros
 
