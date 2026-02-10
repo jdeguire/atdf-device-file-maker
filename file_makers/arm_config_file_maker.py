@@ -216,42 +216,35 @@ def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
     arch = _get_arch_from_cpu_name(cpu_name)
     fpu_name = _get_fpu_name(devinfo, fpu_width)
 
-    macros['__PIC32_DEVICE_NAME'] = '"' + name + '"'
-    macros['__PIC32_DEVICE_NAME__'] = '"' + name + '"'
-
-    macros['__PIC32_PIN_COUNT'] = str(devinfo.pincount)
-    macros['__PIC32_PIN_COUNT__'] = str(devinfo.pincount)
-
-    macros['__PIC32_CPU_NAME'] = '"' + cpu_name + '"'
-    macros['__PIC32_CPU_NAME__'] = '"' + cpu_name + '"'
-    macros['__PIC32_FPU_NAME'] = '"' + fpu_name + '"'
-    macros['__PIC32_FPU_NAME__'] = '"' + fpu_name + '"'
-    macros['__PIC32_ARCH'] = '"' + arch + '"'
-    macros['__PIC32_ARCH__'] = '"' + arch + '"'
+    macros['__DEVICE_NAME'] = '"' + name + '"'
+    macros['__DEVICE_PIN_COUNT'] = str(devinfo.pincount)
+    macros['__DEVICE_CPU_NAME'] = '"' + cpu_name + '"'
+    macros['__DEVICE_FPU_NAME'] = '"' + fpu_name + '"'
+    macros['__DEVICE_ARCH'] = '"' + arch + '"'
 
     l1cache = _get_target_l1cache(devinfo)
     if _L1CACHE_NONE != l1cache:
-        macros['__PIC32_HAS_L1CACHE'] = ''
+        macros['__DEVICE_HAS_L1CACHE'] = ''
 
         if l1cache & _L1CACHE_DATA:
-            macros['__PIC32_HAS_L1DCACHE'] = ''
+            macros['__DEVICE_HAS_L1DCACHE'] = ''
         if l1cache & _L1CACHE_INST:
-            macros['__PIC32_HAS_L1ICACHE'] = ''
+            macros['__DEVICE_HAS_L1ICACHE'] = ''
     
     if _FPU_DP & fpu_width:
-        macros['__PIC32_HAS_FPU64'] = ''
+        macros['__DEVICE_HAS_FPU64'] = ''
     if _FPU_SP & fpu_width:
-        macros['__PIC32_HAS_FPU32'] = ''
+        macros['__DEVICE_HAS_FPU32'] = ''
     if 'fullfp16' in fpu_name:
-        macros['__PIC32_HAS_FPU16'] = ''
+        macros['__DEVICE_HAS_FPU16'] = ''
     if 'neon' in fpu_name:
-        macros['__PIC32_HAS_SIMD'] = ''
-        macros['__PIC32_HAS_NEON'] = ''
+        macros['__DEVICE_HAS_SIMD'] = ''
+        macros['__DEVICE_HAS_NEON'] = ''
     if 'mve' in _get_mve_support(arch, fpu_width):
-        macros['__PIC32_HAS_SIMD'] = ''
-        macros['__PIC32_HAS_MVE'] = ''
+        macros['__DEVICE_HAS_SIMD'] = ''
+        macros['__DEVICE_HAS_MVE'] = ''
     if _has_cmse_extension(arch):
-        macros['__PIC32_HAS_CMSE'] = ''
+        macros['__DEVICE_HAS_CMSE'] = ''
 
     return macros
 
