@@ -39,7 +39,8 @@ from . import version
 from typing import IO
 
 
-def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: str) -> None:
+def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: str,
+        periph_header_names: list[str]) -> None:
     '''Make a C header file for the given device assuming is a a PIC or SAM Cortex-M device.
     '''
     outfile.write(_get_file_prologue(devinfo.name))
@@ -76,8 +77,8 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
     outfile.write('\n\n')
 
     outfile.write('/* ----- Device Peripheral Headers ----- */\n')
-    outfile.write(_get_peripheral_headers(devinfo.peripherals, periph_prefix))
-    outfile.write('\n\n')
+    for name in periph_header_names:
+        outfile.write(f'#include "{periph_prefix}/{name}.h"\n')
 
     outfile.write('/* ----- Device Peripheral Address Macros ----- */\n')
     outfile.write(_get_peripheral_address_macros(devinfo.peripherals, devinfo.address_spaces))
@@ -269,28 +270,6 @@ def _get_memory_region_macros(address_spaces: list[DeviceAddressSpace]) -> str:
             region_str += f'#define {pagesize_macro_name:<32} ({page_size}ul)\n\n'
 
     return region_str
-
-
-def _get_peripheral_headers(peripherals: list[PeripheralGroup], prefix: str) -> str:
-    '''Return a string containing include declarations for this devices' peripherals, not including
-    device fuses or core peripherals.
-
-    The prefix is prepended to every include declaration to form a relative path to the peripheral
-    headers from this device file. This creates "" includes, not <> includes.
-    '''
-    periph_str: str = ''
-
-    for periph in peripherals:
-        if not _peripheral_is_special(periph):
-            name = periph.name.lower()
-            id = periph.id.lower()
-            version = periph.version.lower().replace(' ', '_')
-            if version:
-                periph_str += f'#include "{prefix}/{name}_{id}_{version}.h"\n'
-            else:
-                periph_str += f'#include "{prefix}/{name}_{id}.h"\n'
-
-    return periph_str
 
 
 def _get_peripheral_address_macros(peripherals: list[PeripheralGroup], 

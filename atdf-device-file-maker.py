@@ -274,7 +274,7 @@ if '__main__' == __name__:
 
     big_proc_header_name = 'which_device.h'
 
-    peripherals_to_make: dict[str, PeripheralGroup] = {}
+    peripherals_to_make: dict[str, list[PeripheralGroup]] = {}
     device_families: dict[str, list[str]] = {}
 
     atdf_paths = get_atdf_paths_from_dir(args.packs_dir)
@@ -288,31 +288,17 @@ if '__main__' == __name__:
 
         print(f'Creating files for device {devinfo.name} ({devinfo.cpu})')
 
-        # Linker script
-        #
-        ld_path = lib_proc_prefix / devinfo.name.lower() / 'default.ld'
-        if devinfo.cpu.startswith('cortex-m'):
-            with open_for_writing(ld_path) as ld:
-                arm_mcu_linker_script_maker.run(devinfo, ld)
-        else:
-            with open_for_writing(ld_path) as ld:
-                arm_mpu_linker_script_maker.run(devinfo, ld)
-
-        # C device-specifc header file
-        #
-        dev_header_path = include_proc_prefix / (devinfo.name.lower() + '.h')
-        with open_for_writing(dev_header_path) as hdr:
-            arm_c_device_header_maker.run(devinfo, hdr, peripheral_header_pathname, 
-                                              fuses_header_pathname)
-
-        # Make a dict of peripherals we need to make. Doing this ensures we make each unique
-        # peripheral only once. We do not need to make core peripherals because they are already
-        # defined in CMSIS headers.
+        # Organize our peripheral structures by peripheral name so we can make headers for them later.
+        # We do not need to make core peripherals because they are already defined in CMSIS headers.
+        # We will also track which variants of the peripherals go with this device so we can generate
+        # references to them in the device header.
         #
         # Device fuses are a special peripheral, so look for those and handle them here. Assume
         # each device has at most one fuse peripheral called FUSES for now. You can find the special
         # handling this app does for fuses by searching for 'fuses' with the single quotes.
         #
+        periph_header_names: list[str] = []
+
         for periph in devinfo.peripherals:
             if 'fuses' == periph.name.lower():
                 fuses_header_path = (include_proc_prefix / fuses_header_pathname / (devinfo.name.lower() + '.h'))
@@ -320,17 +306,34 @@ if '__main__' == __name__:
                     basename = devinfo.name.lower() + '_fuses'
                     arm_c_periph_header_maker.run(basename, periph, hdr)
             elif periph.id  and  'system_ip' not in periph.id.lower():
+                # ARM peripherals either do not have an ID or use "SYSTEM_IP" as their ID.
+                # If we're here, then this must not be an ARM peripheral.
+
                 name = periph.name.lower()
-                id = periph.id.lower()
-                ver = periph.version.lower().replace(' ', '_')
 
-                if ver:
-                    full_name = f'{name}_{id}_{ver}'
+                if name in peripherals_to_make:
+                    periph_idx = 0
+                    for other in peripherals_to_make[name]:
+                        if periph.reg_groups == other.reg_groups:
+                            # An identical implementation is already in our dict, so we're done.
+                            break
+
+                        periph_idx += 1
+
+                    if periph_idx >= len(peripherals_to_make[name]):
+                        peripherals_to_make[name].append(periph)
+
+                    periph_header_names.append(f'{name}_{periph_idx}')
                 else:
-                    full_name = f'{name}_{id}'
+                    peripherals_to_make[name] = [periph]
+                    periph_header_names.append(f'{name}_0')
 
-                if full_name not in peripherals_to_make:
-                    peripherals_to_make[full_name] = periph
+        # C device-specifc header file
+        #
+        dev_header_path = include_proc_prefix / (devinfo.name.lower() + '.h')
+        with open_for_writing(dev_header_path) as hdr:
+            arm_c_device_header_maker.run(devinfo, hdr, peripheral_header_pathname, 
+                                            fuses_header_pathname, periph_header_names)
 
         # C device startup file
         #
@@ -341,6 +344,16 @@ if '__main__' == __name__:
         else:
             with open_for_writing(startup_src_path) as startup:
                 arm_mpu_c_startup_maker.run(big_proc_header_name, startup)
+
+        # Linker script
+        #
+        ld_path = lib_proc_prefix / devinfo.name.lower() / 'default.ld'
+        if devinfo.cpu.startswith('cortex-m'):
+            with open_for_writing(ld_path) as ld:
+                arm_mcu_linker_script_maker.run(devinfo, ld)
+        else:
+            with open_for_writing(ld_path) as ld:
+                arm_mpu_linker_script_maker.run(devinfo, ld)
 
         # Clang configuration file
         #
@@ -371,12 +384,17 @@ if '__main__' == __name__:
 
     # Make all of the peripheral implementation C headers. These are shared among various devices.
     #
-    for periph_name, periph_group in peripherals_to_make.items():
-        print(f'Creating peripheral header for {periph_name}')
+    for periph_name, periph_groups in peripherals_to_make.items():
+        print(f'Creating headers for {periph_name.upper()} peripherals')
 
-        periph_header_path = include_proc_prefix / peripheral_header_pathname / (periph_name + '.h')
-        with open_for_writing(periph_header_path) as hdr:
-            arm_c_periph_header_maker.run(periph_name, periph_group, hdr)
+        idx = 0
+        for group in periph_groups:
+            group_name: str = f'{periph_name}_{idx}'
+            group_header_path = include_proc_prefix / peripheral_header_pathname / (group_name + '.h')
+            idx += 1
+
+            with open_for_writing(group_header_path) as hdr:
+                arm_c_periph_header_maker.run(group_name, group, hdr)
 
     # Make the all-encompassing processor header file.
     #

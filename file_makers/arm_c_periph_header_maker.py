@@ -139,9 +139,13 @@ def _get_register_macros(periph_name: str, reg: RegisterGroupMember) -> str:
         macro_base_name = f'{periph_name}_{reg_name}'
 
     # A comment with the register name and an optional caption.
+    # This handles captions that span multiple lines.
     reg_macros: str = f'// {macro_base_name}'
     if reg.caption:
-        reg_macros += ': ' + reg.caption
+        caption_lines = reg.caption.split('\\n')
+        reg_macros += ': ' + caption_lines[0]
+        for line in caption_lines[1:]:
+            reg_macros += '\n// ' + 8*' ' + line.strip()
     reg_macros += '\n'
 
     # A macro with the initial value upon reset.
@@ -322,7 +326,12 @@ def _get_basic_macro(macro_name: str, macro_value: str, macro_caption: str = '')
 
     if macro_caption:
         val_str = f'({macro_value})'
-        macro += f'#define {macro_name:<48} {val_str:<16} /* {macro_caption} */\n'
+
+        # This handles captions that span multiple lines.
+        caption_lines = macro_caption.split('\\n')
+        macro += f'#define {macro_name:<48} {val_str:<16} // {caption_lines[0]}\n'
+        for line in caption_lines[1:]:
+            macro += 74*' ' + '// ' + line.strip() + '\n'
     else:
         macro += f'#define {macro_name:<48} ({macro_value})\n'
 
@@ -343,10 +352,15 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
 
     if periph_name:
         # A comment with the group name and optional caption.
+        # This handles captions that span multiple lines.
         reg_struct += f'// {group.name}'
         if group.caption:
-            reg_struct += f': {group.caption}'
+            caption_lines = group.caption.split('\\n')
+            reg_struct += ': ' + caption_lines[0]
+            for line in caption_lines[1:]:
+                reg_struct += '\n// ' + 8*' ' + line.strip()
         reg_struct += '\n'
+
 
         struct_name = _get_base_groupdef_name(periph_name, group.name, mode)
 
