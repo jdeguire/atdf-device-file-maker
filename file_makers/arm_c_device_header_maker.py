@@ -79,6 +79,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
     outfile.write('/* ----- Device Peripheral Headers ----- */\n')
     for name in periph_header_names:
         outfile.write(f'#include "{periph_prefix}/{name}.h"\n')
+    outfile.write('\n\n')
 
     outfile.write('/* ----- Device Peripheral Address Macros ----- */\n')
     outfile.write(_get_peripheral_address_macros(devinfo.peripherals, devinfo.address_spaces))
