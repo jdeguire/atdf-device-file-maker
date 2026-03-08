@@ -109,6 +109,8 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     # Region aliases
     #
     for key, vals in aliases.items():
+        vals = list(vals)
+        vals.sort()
         for v in vals:
             outfile.write(f'REGION_ALIAS("{v.lower()}", {key.lower()});\n')
 

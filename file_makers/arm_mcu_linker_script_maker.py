@@ -112,6 +112,8 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     # Region aliases
     #
     for key, vals in aliases.items():
+        vals = list(vals)
+        vals.sort()
         for v in vals:
             outfile.write(f'REGION_ALIAS("{v.lower()}", {key.lower()});\n')
 
@@ -129,7 +131,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
 
     if fuses_periph:
         outfile.write('\n    /* Device configuration fuses */')
-        outfile.write(_get_fuse_SECTIONS(unique_addr_spaces, periph))
+        outfile.write(_get_fuse_SECTIONS(fuses_periph))
 
     outfile.write('\n}\n')
 
@@ -585,9 +587,8 @@ def _get_standard_data_SECTIONS(main_flash_region: DeviceMemoryRegion,
     return textwrap.indent(sections_cmd, '    ')
 
 
-def _get_fuse_SECTIONS(addr_spaces: list[DeviceAddressSpace], fuses: PeripheralGroup) -> str:
-    '''Create special output sections for the given peripherals assuming they are fuses. This will
-    look through the address spaces to find one to which they belong.
+def _get_fuse_SECTIONS(fuses: PeripheralGroup) -> str:
+    '''Create special output sections for the given peripherals assuming they are fuses..
     '''
     fuse_str: str = ''
 

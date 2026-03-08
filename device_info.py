@@ -62,6 +62,7 @@ address_spaces : list[DeviceAddressSpace]
         external : bool
 peripherals : list[PeripheralGroup]
     name : str
+    prefix: str
     id : str
     version : str
     instances : list[PeripheralInstance]
@@ -235,6 +236,8 @@ class PeripheralGroup:
     '''A data structure to represent a group of peripherals of the same type.
     '''
     name: str           # The name you would use for the peripheral, like "ADC" or "SERCOM"
+    prefix: str         # The prefix used in registers and macros; this is usually the same as 'name'
+    # TODO: Replace id with a system_ip boolean and remove version.
     id: str             # A unique ID used to distinguish, for example, different types of ADCs
     version: str
     instances: list[PeripheralInstance]

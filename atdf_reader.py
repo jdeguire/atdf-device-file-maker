@@ -160,7 +160,7 @@ class AtdfReader:
     
 
     def get_device_family(self) -> str:
-        '''Get the family of the device, such as "SAME", "PIC32CX", and so on.
+        '''Get the family of the device, such as "SAME", "PIC32C", and so on.
 
         This will return an empty string if the family is not found.
         '''
@@ -173,7 +173,7 @@ class AtdfReader:
 
 
     def get_device_series(self) -> str:
-        '''Get the family of the device, such as "SAME54", "PIC32CXSG41", and so on.
+        '''Get the series of the device, such as "SAME54", "PIC32CXSG41", and so on.
 
         This will return an empty string if the family is not found.
         '''
@@ -279,13 +279,21 @@ class AtdfReader:
 
         periph_groups: list[PeripheralGroup] = []
 
-        for module_element in start_element.findall('module'):
-            module_name = AtdfReader.get_str(module_element, 'name')
-            group = PeripheralGroup(name = module_name,
-                                    id = AtdfReader.get_str(module_element, 'id'),
-                                    version = AtdfReader.get_str(module_element, 'version'),
-                                    instances = self._get_peripheral_instances(module_element),
-                                    reg_groups = self._get_register_groups(module_name))
+        for periph_module_element in start_element.findall('module'):
+            periph_name = AtdfReader.get_str(periph_module_element, 'name')
+
+            # FLEXCOM is the only peripheral with a prefix different from its name.
+            if 'FLEXCOM' == periph_name:
+                periph_prefix = 'FLEX'
+            else:
+                periph_prefix = periph_name
+
+            group = PeripheralGroup(name = periph_name,
+                                    prefix = periph_prefix,
+                                    id = AtdfReader.get_str(periph_module_element, 'id'),
+                                    version = AtdfReader.get_str(periph_module_element, 'version'),
+                                    instances = self._get_peripheral_instances(periph_module_element, periph_prefix),
+                                    reg_groups = self._get_register_groups(periph_name, periph_prefix))
             periph_groups.append(group)
 
         return periph_groups
@@ -377,13 +385,14 @@ class AtdfReader:
         return propgroups
 
 
-    def _get_peripheral_instances(self, module_element: Element) -> list[PeripheralInstance]:
+    def _get_peripheral_instances(self, module_element: Element, periph_prefix: str) -> list[PeripheralInstance]:
         '''Get a list of peripheral instances for the peripheral referred to by the given Element.
 
         This is a private method. You should call 'get_peripheral_groups()' to get all the info
         you will need for the device peripherals.
         '''
         instances: list[PeripheralInstance] = []
+        periph_name = AtdfReader.get_str(module_element, 'name')
 
         for inst_element in module_element.findall('instance'):
             inst_name: str = AtdfReader.get_str(inst_element, 'name')
@@ -391,8 +400,12 @@ class AtdfReader:
             inst_params: list[ParameterValue] = []
 
             for group_element in inst_element.findall('register-group'):
+                name_in_module = AtdfReader.get_str(group_element, 'name-in-module')
+                if name_in_module.startswith(periph_name + '_')  or  name_in_module.startswith(periph_prefix + '_'):
+                    name_in_module = name_in_module.split('_', 1)[1]
+
                 rgr = RegisterGroupReference(instance_name = AtdfReader.get_str(group_element, 'name'),
-                                             module_name = AtdfReader.get_str(group_element, 'name-in-module'),
+                                             module_name = name_in_module,
                                              addr_space = AtdfReader.get_str(group_element, 'address-space'),
                                              offset = AtdfReader.get_int(group_element, 'offset'))
                 inst_group_refs.append(rgr)
@@ -413,7 +426,7 @@ class AtdfReader:
         return instances
 
 
-    def _get_register_groups(self, periph_name: str) -> list[RegisterGroup]:
+    def _get_register_groups(self, periph_name: str, periph_prefix: str) -> list[RegisterGroup]:
         '''Get a list of register groups for the peripheral with the given name (ADC, CAN, etc.).
 
         This is a private method. You should call 'get_peripheral_groups()' to get all the info
@@ -432,13 +445,24 @@ class AtdfReader:
         for group in module_element.findall('register-group'):
             group_modes: list[str] = []
             for mode_element in group.findall('mode'):
+                mode_name = AtdfReader.get_str(mode_element, 'name')
+                # TODO: Maybe put these checks into their own function.
+                if mode_name.endswith('_MODE'):
+                    mode_name = mode_name[:-5]
+                if mode_name.startswith(periph_name + '_')  or  mode_name.startswith(periph_prefix + '_'):
+                    mode_name = mode_name.split('_', 1)[1]
+
                 group_modes.append(AtdfReader.get_str(mode_element, 'name'))
 
-            rg = RegisterGroup(name = AtdfReader.get_str(group, 'name'),
+            group_name = AtdfReader.get_str(group, 'name')
+            if group_name.startswith(periph_name + '_')  or  group_name.startswith(periph_prefix + '_'):
+                group_name = group_name.split('_', 1)[1]
+
+            rg = RegisterGroup(name = group_name,
                                caption = AtdfReader.get_str(group, 'caption'),
                                size = AtdfReader.get_int(group, 'size'),
                                modes = group_modes,
-                               members = self._get_register_group_members(module_element, group))
+                               members = self._get_register_group_members(module_element, group, periph_prefix))
             register_groups.append(rg)
 
         return register_groups
@@ -446,28 +470,46 @@ class AtdfReader:
 
     def _get_register_group_members(self,
                                     module_element:Element,
-                                    group_element: Element) -> list[RegisterGroupMember]:
+                                    group_element: Element,
+                                    periph_prefix: str) -> list[RegisterGroupMember]:
         '''Get the members for the register group referred to by the given Element, which can be
         either a register definition or a reference to another group.
 
         The peripheral module element is also needed because that is used when getting info about
-        the bitfields in the register.
+        the bitfields in the register. Some ATDF files will include the name of the peripheral in
+        the name of the register, so this will normalize that by stripping off the peripheral name.
 
         This is a private method. You should call 'get_peripheral_groups()' to get all the info
         you will need for the device peripherals.
         '''
         group_members: list[RegisterGroupMember] = []
+        periph_name = AtdfReader.get_str(module_element, 'name')
 
         for member in group_element:
+            mode_name = AtdfReader.get_str(member, 'modes')
+
+            # TODO: Maybe put these checks into their own function.
+            if mode_name.endswith('_MODE'):
+                mode_name = mode_name[:-5]
+            if mode_name.startswith(periph_name + '_')  or  mode_name.startswith(periph_prefix + '_'):
+                mode_name = mode_name.split('_', 1)[1]
+
             if 'register-group' == member.tag:
                 # This group member is a reference to another group. This is used to add another
                 # layer of indirection to a set of registers. For example, the PORT peripheral on
                 # some parts uses this to denote an array of a group with one for each port.
 
+                # We do not want to strip the peripheral name from the subgroup name. Microchip
+                # headers appear to use the subgroup name as-is even if it has the peripheral name.
+
+                name_in_module = AtdfReader.get_str(member, 'name-in-module')
+                if name_in_module.startswith(periph_name + '_')  or  name_in_module.startswith(periph_prefix + '_'):
+                    name_in_module = name_in_module.split('_', 1)[1]
+
                 ref = RegisterGroupMember(is_subgroup = True,
                                           name = AtdfReader.get_str(member, 'name'),
-                                          module_name = AtdfReader.get_str(member, 'name-in-module'),
-                                          mode = AtdfReader.get_str(member, 'modes'),
+                                          module_name = name_in_module,
+                                          mode = mode_name,
                                           offset = AtdfReader.get_int(member, 'offset'),
                                           size = AtdfReader.get_int(member, 'size'),
                                           count = AtdfReader.get_int(member, 'count'),
@@ -478,10 +520,17 @@ class AtdfReader:
             elif 'register' == member.tag:
                 # This group member is a register.
 
+                # Some registers on some devices (SAME70) repeat the peripheral name or prefix in
+                # them. Strip it off so all register names are formatted the same way.
+                # TODO: Maybe put these checks into their own function.
+                reg_name = AtdfReader.get_str(member, 'name')
+                if reg_name.startswith(periph_name + '_')  or  reg_name.startswith(periph_prefix + '_'):
+                    reg_name = reg_name.split('_', 1)[1]
+
                 reg = RegisterGroupMember(is_subgroup = False,
-                                          name = AtdfReader.get_str(member, 'name'),
+                                          name = reg_name,
                                           module_name = '',
-                                          mode = AtdfReader.get_str(member, 'modes'),
+                                          mode = mode_name,
                                           offset = AtdfReader.get_int(member, 'offset'),
                                           size = AtdfReader.get_int(member, 'size'),
                                           count = AtdfReader.get_int(member, 'count'),
@@ -525,6 +574,9 @@ class AtdfReader:
             field_modes: list[str] = []
             if field_modes_str:
                 field_modes = field_modes_str.split()
+                for idx, fm in enumerate(field_modes):
+                    if fm.endswith('_MODE'):
+                        field_modes[idx] = fm[:-5]
 
             rf = RegisterField(name = AtdfReader.get_str(field_element, 'name'),
                                caption = AtdfReader.get_str(field_element, 'caption'),

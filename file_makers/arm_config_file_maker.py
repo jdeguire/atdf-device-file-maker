@@ -197,9 +197,12 @@ def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
 
     if name.startswith('SAM'):
         # Add the "ATSAM" variant of the name for compability. Our ATDF Reader pulls off the "AT"
-        # because some devices use it and some don't.
+        # because some devices use it and some don't. Also add base family macros like "SAME" or
+        # "SAM9".
         macros[f'__AT{name}__'] = ''
         macros[f'__AT{name}'] = ''
+        macros[f'__{name[:4]}__'] = ''
+        macros[f'__{name[:4]}'] = ''
     elif name.startswith('PIC32'):
         # Add macros with "PIC32C" and "PIC32CX" in them, as an example. These might already be
         # covered by the family and series above, in which case these will effectively do nothing.

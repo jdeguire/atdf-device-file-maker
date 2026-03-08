@@ -300,6 +300,10 @@ if '__main__' == __name__:
         periph_header_names: list[str] = []
 
         for periph in devinfo.peripherals:
+            # TODO: Why do fuses need special handling here? Since we are now checking peripheral
+            #       definitions oursevles, why couldn't we just have "fuses_0.h", "fuses_1.h", etc.?
+            # TODO: Should we group peripherals by family, like PIC32CZ or SAMG? If so, make a function
+            #       to extract those faimlies from the device name.
             if 'fuses' == periph.name.lower():
                 fuses_header_path = (include_proc_prefix / fuses_header_pathname / (devinfo.name.lower() + '.h'))
                 with open_for_writing(fuses_header_path) as hdr:

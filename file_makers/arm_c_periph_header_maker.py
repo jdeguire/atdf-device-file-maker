@@ -55,7 +55,7 @@ def run(basename: str, peripheral: PeripheralGroup, outfile: IO[str]) -> None:
 
         for member in sorted_members:
             if not member.is_subgroup:
-                outfile.write(_get_register_macros(peripheral.name, member))
+                outfile.write(_get_register_macros(peripheral.prefix, member))
                 outfile.write('\n')
 
     # Fuses are special in that we refer to them individually instead of as part of a struct. This
@@ -64,7 +64,7 @@ def run(basename: str, peripheral: PeripheralGroup, outfile: IO[str]) -> None:
         outfile.write('\n\n#ifndef __ASSEMBLER__\n\n')
         outfile.write('/* ----- Register Group Definitions ----- */\n')
         for reg_group in peripheral.reg_groups:
-            outfile.write(_get_register_group_definition(peripheral.name, reg_group))
+            outfile.write(_get_register_group_definition(peripheral.name, peripheral.prefix, reg_group))
             outfile.write('\n')
 
         outfile.write('#endif /* ifndef __ASSEMBLER__ */\n\n')
@@ -98,22 +98,10 @@ def _get_file_prologue(filename: str) -> str:
     return prologue
 
 
-def _get_register_macros(periph_name: str, reg: RegisterGroupMember) -> str:
+def _get_register_macros(periph_prefix: str, reg: RegisterGroupMember) -> str:
     '''Return a string containing macros defining the given register and its bitfields assuming it
     is a register and not a reference to another register group.
     '''
-    # The FLEXCOM peripheral is a special case; registers and macros use "FLEX_" as the prefix.
-    if 'FLEXCOM' == periph_name:
-        periph_name = 'FLEX'
-
-    # Some registers on some devices (SAME70) repeat the peripheral name in them. Strip it off so
-    # we don't duplicate it later.
-    if reg.name.startswith(periph_name + '_'):
-        reg_name = reg.name[len(periph_name)+1:]
-    elif reg.name.startswith(periph_name):
-        reg_name = reg.name[len(periph_name):]
-    else:
-        reg_name = reg.name
 
     # If a peripheral has modes, then register definitions will contain the mode to which they apply.
     # An example of this is the SERCOM peripheral, which can be in SPI, UART, or I2C mode.
@@ -130,16 +118,15 @@ def _get_register_macros(periph_name: str, reg: RegisterGroupMember) -> str:
     # Value macro name format:  BaseName_FieldName_ValueName_foo
     if reg.mode:
         if reg.mode.startswith('DEFAULT'):
-            macro_base_name = f'{periph_name}_{reg_name}'
-        elif reg.mode.endswith('MODE'):
-            macro_base_name = f'{periph_name}_{reg.mode[:-5]}_{reg_name}'
+            macro_base_name = f'{periph_prefix}_{reg.name}'
         else:
-            macro_base_name = f'{periph_name}_{reg.mode}_{reg_name}'
+            macro_base_name = f'{periph_prefix}_{reg.mode}_{reg.name}'
     else:
-        macro_base_name = f'{periph_name}_{reg_name}'
+        macro_base_name = f'{periph_prefix}_{reg.name}'
 
     # A comment with the register name and an optional caption.
     # This handles captions that span multiple lines.
+    # TODO: Make a function that does this. This is repeated 3 times.
     reg_macros: str = f'// {macro_base_name}'
     if reg.caption:
         caption_lines = reg.caption.split('\\n')
@@ -171,8 +158,6 @@ def _get_register_macros(periph_name: str, reg: RegisterGroupMember) -> str:
             for fmode in field.modes:
                 if fmode.startswith('DEFAULT'):
                     macro_mode = ''
-                elif fmode.endswith('MODE'):
-                    macro_mode = fmode[:-5]
                 else:
                     macro_mode = fmode
 
@@ -204,7 +189,7 @@ def _get_register_macros(periph_name: str, reg: RegisterGroupMember) -> str:
     return reg_macros + field_macros
 
 
-def _get_register_group_definition(periph_name: str, group: RegisterGroup) -> str:
+def _get_register_group_definition(periph_name: str, periph_prefix: str, group: RegisterGroup) -> str:
     '''Return a string containing a C struct or union that defines a single register group.
     '''
     group_def: str = ''
@@ -219,10 +204,7 @@ def _get_register_group_definition(periph_name: str, group: RegisterGroup) -> st
                 has_default_modes = True
                 continue
 
-            if mode.endswith('_MODE'):
-                mode = mode[:-5]
-
-            group_def += _get_register_struct(periph_name, group, mode)
+            group_def += _get_register_struct(periph_name, periph_prefix, group, mode)
             group_def += '\n'
         
         # Now the "main" structure is a union containing the different modes.
@@ -231,7 +213,7 @@ def _get_register_group_definition(periph_name: str, group: RegisterGroup) -> st
 
         # Add our "default" mode registers to the union as an anonymous struct.
         if has_default_modes:
-            default_struct = _get_register_struct('', group, 'DEFAULT')
+            default_struct = _get_register_struct('', periph_prefix, group, 'DEFAULT')
             group_def += textwrap.indent(default_struct, '    ')
 
         # Now add the structs we created in the above loop to our union.
@@ -239,14 +221,12 @@ def _get_register_group_definition(periph_name: str, group: RegisterGroup) -> st
             if mode.startswith('DEFAULT'):
                 continue
 
-            if mode.endswith('_MODE'):
-                mode = mode[:-5]
             mode_type_name = _get_base_groupdef_name(periph_name, group.name, mode) + '_t'
             group_def += f'    {mode_type_name:<24} {mode};\n'
         
         group_def += f'}} {union_name}_t;\n'
     else:
-        group_def += _get_register_struct(periph_name, group)
+        group_def += _get_register_struct(periph_name, periph_prefix, group, '')
 
     return group_def
 
@@ -338,7 +318,7 @@ def _get_basic_macro(macro_name: str, macro_value: str, macro_caption: str = '')
     return macro
 
 
-def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '') -> str:
+def _get_register_struct(periph_name: str, periph_prefix: str, group: RegisterGroup, mode: str = '') -> str:
     '''Return a string containing a C struct that defines a single register group.
 
     If a mode is provided, the resulting structure will include only registers from that mode or
@@ -353,7 +333,10 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
     if periph_name:
         # A comment with the group name and optional caption.
         # This handles captions that span multiple lines.
-        reg_struct += f'// {group.name}'
+        reg_struct += f'// {periph_name}'
+        if periph_name != group.name:
+            reg_struct += f'_{group.name}'
+
         if group.caption:
             caption_lines = group.caption.split('\\n')
             reg_struct += ': ' + caption_lines[0]
@@ -407,30 +390,20 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
 
         # Get the type and member name based on whether this is a register or subgroup.
         # Registers repeat the peripheral or group name. This redundant, but needed to avoid
-        # conlicting with macros. The group name does not need this.
+        # conflicting with macros. The group name does not need this.
         if member.is_subgroup:
             subgroup_type = _get_base_groupdef_name(periph_name, member.module_name) + '_t'
             mem_name = member.name
         else:
             # Some registers on some devices repeat the peripheral or group name in them. 
             # Make sure we do not duplicate it (ie. we do not want 'PERIPH_PERIPH_REG').
-            name_prefix: str = periph_name
+            # name_prefix: str = periph_name
+            name_prefix: str = periph_prefix
             if periph_name in group.name  and  not group.name.startswith(periph_name):
                 name_prefix = group.name
 
-            # The FLEXCOM peripheral is a special case; registers and macros use "FLEX_" as the prefix.
-            if 'FLEXCOM' == name_prefix:
-                name_prefix = 'FLEX'
-
-            if not member.name.startswith(name_prefix):
-                if member.name.startswith('_'):
-                    mem_name = name_prefix + member.name
-                else:
-                    mem_name = name_prefix + '_' + member.name
-            else:
-                mem_name = member.name
-
             subgroup_type = _get_reg_type_from_size(member.size)
+            mem_name = name_prefix + '_' + member.name
 
         if is_union:
             member_str += '    '
@@ -475,26 +448,19 @@ def _get_base_groupdef_name(periph_name: str, group_name: str, mode_name: str = 
 
     Fuses are a special case and will return "cfg_" followed by the group name in lower case.
     '''
-    # For now, assume that fuses are in a peripheral called FUSES.
-    if 'fuses' == periph_name.lower():
-        return 'cfg_' + group_name.lower().replace('__', '_')
-    else:
-        # Prevent names like 'periph_periph_registers'.
-        if group_name.startswith(periph_name):
-            group_name = group_name[len(periph_name):]
+    # Prevent names like 'periph_periph_registers', which can happen if the peripheral and groups
+    # names are the same.
+    if periph_name in group_name:
+        periph_name = group_name
+        group_name = ''
 
-        # Prevent names like 'periph_blah_periph_registers'.
-        if periph_name in group_name:
-            periph_name = group_name
-            group_name = ''
+    if group_name:
+        group_name = '_' + group_name.lower()
 
-        if group_name:
-            group_name = '_' + group_name.lower()
+    if mode_name:
+        mode_name = '_' + mode_name.lower()
 
-        if mode_name:
-            mode_name = '_' + mode_name.lower()
-
-        return f'{periph_name.lower()}{mode_name}{group_name}_registers'.replace('__', '_')
+    return f'{periph_name.lower()}{mode_name}{group_name}_registers'.replace('__', '_')
 
 
 def _get_reg_type_from_size(size: int) -> str:

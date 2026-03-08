@@ -101,6 +101,11 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
 
     # Fuses need special handling from other peripherals. This assumes there is at most one fuse
     # peripheral called FUSES, though that peripheral can have multiple groups.
+    # TODO: If we stop handling fuses differently from other peripherals (see the TODO in the main
+    #       file), then this can be done in the fuse peripheral header rather than in here.
+    #       Hmmm, actually the declarations could move to the fuse peripheral header either way.
+    # TODO: Maybe we should add macros for the fuse section names so that assemblers can use those
+    #       with the ".section" directive.
     if fuses_peripheral:
         outfile.write('/* ----- Device Configuration Fuses ----- */\n')
         outfile.write(f'#include "{fuse_prefix}/{devinfo.name.lower()}.h"\n\n')
@@ -361,6 +366,7 @@ def _get_device_fuse_declarations(fuse_periph: PeripheralGroup,
                         section_name = '.' + base_name.lower() + str(i)
                         variable_name = base_name.upper() + str(i)
 
+                        # TODO: We might not need this check anymore
                         if not variable_name.startswith('FUSES_'):
                             variable_name = 'FUSES_' + variable_name
 
@@ -374,6 +380,7 @@ def _get_device_fuse_declarations(fuse_periph: PeripheralGroup,
                     section_name = '.' + base_name.lower()
                     variable_name = base_name.upper()
 
+                    # TODO: We might not need this check anymore
                     if not variable_name.startswith('FUSES_'):
                         variable_name = 'FUSES_' + variable_name
 
