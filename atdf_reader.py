@@ -401,8 +401,7 @@ class AtdfReader:
 
             for group_element in inst_element.findall('register-group'):
                 name_in_module = AtdfReader.get_str(group_element, 'name-in-module')
-                if name_in_module.startswith(periph_name + '_')  or  name_in_module.startswith(periph_prefix + '_'):
-                    name_in_module = name_in_module.split('_', 1)[1]
+                name_in_module = self._remove_periph_from_name(name_in_module, periph_name, periph_prefix)
 
                 rgr = RegisterGroupReference(instance_name = AtdfReader.get_str(group_element, 'name'),
                                              module_name = name_in_module,
@@ -446,17 +445,13 @@ class AtdfReader:
             group_modes: list[str] = []
             for mode_element in group.findall('mode'):
                 mode_name = AtdfReader.get_str(mode_element, 'name')
-                # TODO: Maybe put these checks into their own function.
-                if mode_name.endswith('_MODE'):
-                    mode_name = mode_name[:-5]
-                if mode_name.startswith(periph_name + '_')  or  mode_name.startswith(periph_prefix + '_'):
-                    mode_name = mode_name.split('_', 1)[1]
+                mode_name = self._remove_MODE_from_name(mode_name)
+                mode_name = self._remove_periph_from_name(mode_name, periph_name, periph_prefix)
 
                 group_modes.append(AtdfReader.get_str(mode_element, 'name'))
 
             group_name = AtdfReader.get_str(group, 'name')
-            if group_name.startswith(periph_name + '_')  or  group_name.startswith(periph_prefix + '_'):
-                group_name = group_name.split('_', 1)[1]
+            group_name = self._remove_periph_from_name(group_name, periph_name, periph_prefix)
 
             rg = RegisterGroup(name = group_name,
                                caption = AtdfReader.get_str(group, 'caption'),
@@ -488,11 +483,8 @@ class AtdfReader:
         for member in group_element:
             mode_name = AtdfReader.get_str(member, 'modes')
 
-            # TODO: Maybe put these checks into their own function.
-            if mode_name.endswith('_MODE'):
-                mode_name = mode_name[:-5]
-            if mode_name.startswith(periph_name + '_')  or  mode_name.startswith(periph_prefix + '_'):
-                mode_name = mode_name.split('_', 1)[1]
+            mode_name = self._remove_MODE_from_name(mode_name)
+            mode_name = self._remove_periph_from_name(mode_name, periph_name, periph_prefix)
 
             if 'register-group' == member.tag:
                 # This group member is a reference to another group. This is used to add another
@@ -503,8 +495,7 @@ class AtdfReader:
                 # headers appear to use the subgroup name as-is even if it has the peripheral name.
 
                 name_in_module = AtdfReader.get_str(member, 'name-in-module')
-                if name_in_module.startswith(periph_name + '_')  or  name_in_module.startswith(periph_prefix + '_'):
-                    name_in_module = name_in_module.split('_', 1)[1]
+                name_in_module = self._remove_periph_from_name(name_in_module, periph_name, periph_prefix)
 
                 ref = RegisterGroupMember(is_subgroup = True,
                                           name = AtdfReader.get_str(member, 'name'),
@@ -522,10 +513,8 @@ class AtdfReader:
 
                 # Some registers on some devices (SAME70) repeat the peripheral name or prefix in
                 # them. Strip it off so all register names are formatted the same way.
-                # TODO: Maybe put these checks into their own function.
                 reg_name = AtdfReader.get_str(member, 'name')
-                if reg_name.startswith(periph_name + '_')  or  reg_name.startswith(periph_prefix + '_'):
-                    reg_name = reg_name.split('_', 1)[1]
+                reg_name = self._remove_periph_from_name(reg_name, periph_name, periph_prefix)
 
                 reg = RegisterGroupMember(is_subgroup = False,
                                           name = reg_name,
@@ -575,8 +564,7 @@ class AtdfReader:
             if field_modes_str:
                 field_modes = field_modes_str.split()
                 for idx, fm in enumerate(field_modes):
-                    if fm.endswith('_MODE'):
-                        field_modes[idx] = fm[:-5]
+                    field_modes[idx] = self._remove_MODE_from_name(fm)
 
             rf = RegisterField(name = AtdfReader.get_str(field_element, 'name'),
                                caption = AtdfReader.get_str(field_element, 'caption'),
@@ -602,3 +590,23 @@ class AtdfReader:
                 return subelement
             
         return None
+
+
+    def _remove_periph_from_name(self, name: str, periph_name: str, periph_prefix: str) -> str:
+        '''Checks if the given name starts with the given perpiheral name or prefix and removes it
+        if so.
+        '''
+        if name.startswith(periph_name + '_')  or  name.startswith(periph_prefix + '_'):
+            name = name.split('_', 1)[1]
+
+        return name
+    
+
+    def _remove_MODE_from_name(self, name: str) -> str:
+        '''Checks if the given name ends with "_MODE" and removes it if so.
+        '''
+        if name.endswith('_MODE'):
+            name = name[:-5]
+
+        return name
+
