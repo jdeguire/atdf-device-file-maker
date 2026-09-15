@@ -536,19 +536,22 @@ def _get_standard_data_SECTIONS(main_ddr_region: DeviceMemoryRegion) -> str:
         .heap (NOLOAD) :
         {{
             . = ALIGN(8);
+            __heap_start = .;
             . = . + __HEAP_SIZE;
             . = ALIGN(8);
-            __HeapLimit = .;
+            __heap_end = .;
             __llvm_libc_heap_limit = .;
         }} > {ddr_name}
+
+        PROVIDE(__heap_size = __heap_end - __heap_start);
 
         .stack (ORIGIN({ddr_name}) + LENGTH({ddr_name}) - __ALL_STACKS_SIZE) (NOLOAD) :
         {{
             . = ALIGN(8);
-            __StackLimit = .;
+            __stack_limit = .;
             . = . + __STACK_SIZE;
             . = ALIGN(8);
-            __StackTop = .;
+            __stack = .;
 
             __fiq_stack_limit = .;
             . = . + __FIQ_STACK_SIZE;
@@ -575,10 +578,9 @@ def _get_standard_data_SECTIONS(main_ddr_region: DeviceMemoryRegion) -> str:
             . = ALIGN(8);
             __und_stack = .;
         }} > {ddr_name}
-        PROVIDE(__stack = __StackTop);
 
         /* Check if data + heap + stack exceeds RAM limit */
-        ASSERT(__StackLimit >= __HeapLimit, "The stacks are too big to fit into memory")
+        ASSERT(__stack_limit >= __heap_end, "The stacks are too big to fit into memory")
 
         '''
 

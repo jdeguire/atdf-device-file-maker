@@ -82,7 +82,7 @@ def _get_file_prologue(proc_header_name: str) -> str:
            modes. The first one is for the "System" and "User" modes. The reset handler puts the
            processor into System mode before jumping to main().
            */
-        extern uint32_t __StackTop;
+        extern uint32_t __stack;
         extern uint32_t __fiq_stack;
         extern uint32_t __irq_stack;
         extern uint32_t __svc_stack;
@@ -358,7 +358,7 @@ def _get_reset_handler() -> str:
             __set_mode(CPSR_I_Msk | CPSR_F_Msk | CPSR_M_UND);
             __set_SP((uint32_t)&__und_stack & ~0x07);
             __set_mode(CPSR_I_Msk | CPSR_F_Msk | CPSR_M_SYS);
-            __set_SP((uint32_t)&__StackTop & ~0x07);
+            __set_SP((uint32_t)&__stack & ~0x07);
 
             /* The processor is now in "System" mode. */
             

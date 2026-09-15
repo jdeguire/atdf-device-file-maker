@@ -100,7 +100,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
 
     # MEMORY command
     #
-    outfile.write(_get_memory_symbols(main_flash_region, main_ram_region))
+    outfile.write(_get_memory_symbols(main_flash_region, main_ram_region, _has_stack_sealing(devinfo.cpu)))
     outfile.write('\n\nMEMORY\n{\n')
     outfile.write(_get_MEMORY_regions(unique_addr_spaces, main_flash_region, main_ram_region,
                                       main_bootflash_region))
@@ -232,7 +232,8 @@ def _find_biggest_memory_region(address_spaces: list[DeviceAddressSpace],
 
 
 def _get_memory_symbols(main_flash_region: DeviceMemoryRegion,
-                        main_ram_region: DeviceMemoryRegion) -> str:
+                        main_ram_region: DeviceMemoryRegion,
+                        has_stack_sealing: bool) -> str:
     '''Return a set of linker symbols giving the start and size of ROM, RAM, and any other useful
     tidbits.
     '''
@@ -248,11 +249,11 @@ def _get_memory_symbols(main_flash_region: DeviceMemoryRegion,
         /* Stack and heap configuration. 
            Modify these using the --defsym option to the linker. */
         PROVIDE(__STACK_SIZE = 0x00000400);
-        PROVIDE(__HEAP_SIZE  = 0x00000C00);
+        PROVIDE(__HEAP_SIZE  = 0x00000400);
 
         /* ARMv8-M stack sealing:
            To use ARMv8-M stack sealing set __STACKSEAL_SIZE to 8 otherwise keep 0. */
-        __STACKSEAL_SIZE = 0;
+        __STACKSEAL_SIZE = {8 if has_stack_sealing else 0};
         '''
 
     return textwrap.dedent(symbol_str)
@@ -550,37 +551,33 @@ def _get_standard_data_SECTIONS(main_flash_region: DeviceMemoryRegion,
         .heap (NOLOAD) :
         {{
             . = ALIGN(8);
+            __heap_start = .;
             . = . + __HEAP_SIZE;
             . = ALIGN(8);
-            __HeapLimit = .;
+            __heap_end = .;
             __llvm_libc_heap_limit = .;
         }} > {ram_name}
 
+        PROVIDE(__heap_size = __heap_end - __heap_start);
+        PROVIDE(__stack_limit = __heap_end);
+
         .stack (ORIGIN({ram_name}) + LENGTH({ram_name}) - __STACK_SIZE - __STACKSEAL_SIZE) (NOLOAD) :
         {{
-            . = ALIGN(8);
-            __StackLimit = .;
             . = . + __STACK_SIZE;
             . = ALIGN(8);
-            __StackTop = .;
+            __stack = .;
         }} > {ram_name}
-        PROVIDE(__stack = __StackTop);
 
-        /* ARMv8-M stack sealing:
-            to use ARMv8-M stack sealing uncomment '.stackseal' section
+        /* ARMv8-M stack sealing
           */
-        /*
         .stackseal (ORIGIN({ram_name}) + LENGTH({ram_name}) - __STACKSEAL_SIZE) (NOLOAD) :
         {{
-            . = ALIGN(8);
-            __StackSeal = .;
-            . = . + 8;
-            . = ALIGN(8);
+            __stack_seal = .;
+            . = . + __STACKSEAL_SIZE;
         }} > {ram_name}
-        */
 
         /* Check if data + heap + stack exceeds RAM limit */
-        ASSERT(__StackLimit >= __HeapLimit, "RAM region overflowed with stack")
+        ASSERT(__stack - __STACK_SIZE >= __stack_limit, "The stack is too big to fit in memory")
 
         '''
 
@@ -631,3 +628,24 @@ def _find_start_of_address_space(addr_spaces: list[DeviceAddressSpace], name: st
             return space.start_addr
 
     raise ValueError(f'Address space {name} could not be found!')
+
+
+def _has_stack_sealing(cpu_name: str) -> bool:
+    '''Return True if the given CPU has the ARM Stack Sealing extension.
+    '''
+
+    if cpu_name.startswith('cortex'):
+        # Remove the "cortex-" part to make the matching a bit easier to read.
+        cpu = cpu_name[7:]
+
+        match cpu:
+            case 'm23':
+                return True
+            case 'm33' | 'm35' | 'm35p':
+                return True
+            case 'm52' | 'm55' | 'm85':
+                return True
+            case _:
+                return False
+    else:
+        return False
