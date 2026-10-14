@@ -178,7 +178,32 @@ def _get_handler_declarations(interrupts: list[DeviceInterrupt]) -> str:
         func_str = f'{intr.name}_Handler'
         decl_str += f'void {func_str:<32}(void) __attribute__((weak, alias("Default_Handler_Jump")));\n'
 
+        cmsis_name = _get_cmsis_interrupt_name(intr.name)
+
+        if cmsis_name != intr.name:
+            # CMSIS and the ATDF info have different names for this core interrupt, so add a stub
+            # function to maintain compatibility.
+            decl_str += f'void __attribute__((weak)) {cmsis_name}_Handler(void) {{\n'
+            decl_str += f'    {intr.name}_Handler();        // Here for backward compatibility\n'
+            decl_str += '}\n\n'
+
     return decl_str
+
+
+def _get_cmsis_interrupt_name(intr_name: str) -> str:
+    '''Return the core interrupt name used by CMSIS if it differs from what is in the ATDF files;
+    otherwise, return the name unchanged.
+    '''
+    if 'NonMaskableInt' == intr_name:
+        return 'NMI'
+    elif 'MemoryManagement' == intr_name:
+        return 'MemManage'
+    elif 'SVCall' == intr_name:
+        return 'SVC'
+    elif 'DebugMonitor' == intr_name:
+        return 'DebugMon'
+    else:
+        return intr_name
 
 
 def _get_vector_table(interrupts: list[DeviceInterrupt]) -> str:
@@ -198,7 +223,7 @@ def _get_vector_table(interrupts: list[DeviceInterrupt]) -> str:
             intr_decls.append('    Reserved_Handler,                /*     Reserved */')
             current_index += 1
         
-        entry = f'{intr.name}_Handler,'
+        entry = f'{_get_cmsis_interrupt_name(intr.name)}_Handler,'
         intr_decls.append(f'    {entry:<32} /* {intr.index :3} {intr.caption} */')
 
         current_index += 1
