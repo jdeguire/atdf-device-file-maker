@@ -183,9 +183,11 @@ def _get_handler_declarations(interrupts: list[DeviceInterrupt]) -> str:
         if cmsis_name != intr.name:
             # CMSIS and the ATDF info have different names for this core interrupt, so add a stub
             # function to maintain compatibility.
-            decl_str += f'void __attribute__((weak)) {cmsis_name}_Handler(void) {{\n'
-            decl_str += f'    {intr.name}_Handler();        // Here for backward compatibility\n'
-            decl_str += '}\n\n'
+            cmsis_func = f'{cmsis_name}_Handler'
+            decl_str += f'void __attribute__((weak)) {cmsis_func}(void) {{\n'
+            decl_str += f'    // Call old function for backward compatibility; new code should override {cmsis_func}().\n'
+            decl_str += f'    {intr.name}_Handler();\n'
+            decl_str += '}\n'
 
     return decl_str
 
